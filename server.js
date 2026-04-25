@@ -1,24 +1,20 @@
 const express = require("express");
-const app = express();
+const axios = require("axios");
 
+const app = express();
 app.use(express.json());
 
 // ===============================
-// SESSION STORE (Replace with Redis in production)
-// ===============================
-const sessionStore = new Map();
-
-// ===============================
-// SAFE LOGGER
+// SAFE LOGGING
 // ===============================
 function log(...args) {
   console.log("[WEBHOOK]", ...args);
 }
 
 // ===============================
-// EXTRACT SESSION (ROBUST)
+// SESSION / PHONE EXTRACTOR
 // ===============================
-function getSessionId(body) {
+function getPhone(body) {
   try {
     const direct =
       body?.originalDetectIntentRequest?.payload?.AiSensyMobileNumber;
@@ -37,22 +33,48 @@ function getSessionId(body) {
 
     return null;
   } catch (e) {
-    log("Session parse error:", e.message);
     return null;
   }
 }
 
 // ===============================
-// GUARANTEED RESPONSE WRAPPER
+// AISENSY API CALL (FINAL FIX)
 // ===============================
-function safeReply(res, text) {
+async function sendList(phone) {
+  try {
+    const response = await axios.post(
+      "https://api.aisensy.com/campaign/t1/api/v2", // ⚠️ confirm endpoint
+      {
+        apiKey: "YOUR_API_KEY",
+        to: phone,
+        type: "text",
+        message: "📄 Here is your requested list"
+      },
+      {
+        timeout: 10000
+      }
+    );
+
+    log("📤 AISensy Success:", response.data);
+    return true;
+
+  } catch (err) {
+    log("❌ AISensy Failed:", err?.response?.data || err.message);
+    return false;
+  }
+}
+
+// ===============================
+// GUARANTEED RESPONSE
+// ===============================
+function reply(res, text) {
   return res.json({
     fulfillmentText: text || "OK"
   });
 }
 
 // ===============================
-// MAIN WEBHOOK
+// WEBHOOK
 // ===============================
 app.post("/webhook", async (req, res) => {
   try {
@@ -62,76 +84,55 @@ app.post("/webhook", async (req, res) => {
     const intent = body?.queryResult?.intent?.displayName;
 
     // ===============================
-    // IGNORE CONSOLE TESTS
+    // IGNORE CONSOLE
     // ===============================
     if (source === "DIALOGFLOW_CONSOLE") {
-      log("Console test ignored");
-      return safeReply(res, "Console test only");
+      log("Console ignored");
+      return reply(res, "Console test only");
     }
 
-    const sessionId = getSessionId(body);
+    const phone = getPhone(body);
 
-    log("Session:", sessionId);
     log("Intent:", intent);
+    log("Phone:", phone);
 
     // ===============================
-    // NO SESSION HANDLING (CRITICAL FIX)
+    // SAFE FALLBACK (NO DEAD BOT)
     // ===============================
-    if (!sessionId) {
-      log("No session found - soft fallback");
+    if (!phone) {
+      log("⚠️ No phone - safe exit");
 
-      return safeReply(res, "Message received");
+      return reply(res, "Message received");
     }
 
-    // Keep session alive
-    sessionStore.set(sessionId, {
-      lastSeen: Date.now()
-    });
-
     // ===============================
-    // EXAMPLE INTENT: SEND LIST
+    // MAIN INTENT
     // ===============================
     if (intent === "send_list") {
-      try {
-        log("Trigger send_list for:", sessionId);
+      log("📤 Sending list to:", phone);
 
-        // 👉 PLACE YOUR AISENSY API HERE
-        // await sendListAPI(sessionId);
+      const success = await sendList(phone);
 
-        return safeReply(res, `List sent to ${sessionId}`);
-      } catch (err) {
-        log("API error:", err.message);
-        return safeReply(res, "Failed to send list");
+      if (success) {
+        return reply(res, "List sent successfully ✅");
+      } else {
+        return reply(res, "Failed to send list ❌");
       }
     }
 
     // ===============================
-    // DEFAULT RESPONSE
+    // DEFAULT
     // ===============================
-    return safeReply(res, "OK");
+    return reply(res, "OK");
 
   } catch (err) {
-    // 🔥 NEVER LET WEBHOOK DIE
-    log("Fatal error:", err.message);
-    return safeReply(res, "Recovered from error");
+    log("🔥 Fatal error:", err.message);
+    return reply(res, "Recovered from error");
   }
 });
 
 // ===============================
-// CLEANUP OLD SESSIONS (optional hygiene)
-// ===============================
-setInterval(() => {
-  const now = Date.now();
-
-  for (const [key, value] of sessionStore.entries()) {
-    if (now - value.lastSeen > 30 * 60 * 1000) {
-      sessionStore.delete(key);
-    }
-  }
-}, 10 * 60 * 1000);
-
-// ===============================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log("🚀 Bulletproof webhook running on port", PORT);
+  console.log("🚀 FINAL WEBHOOK RUNNING ON PORT", PORT);
 });
