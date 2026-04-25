@@ -4,80 +4,75 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// 🔴 Crash debugging (VERY IMPORTANT)
-process.on("uncaughtException", (err) => {
-    console.error("UNCAUGHT EXCEPTION:", err);
-});
+// 🔐 ENV (Render me set karo)
+const AISENSY_API_KEY = process.env.AISENSY_API_KEY;
 
-process.on("unhandledRejection", (err) => {
-    console.error("UNHANDLED REJECTION:", err);
-});
+// 📄 PDF link (public hona chahiye)
+const PDF_URL = "https://yourdomain.com/catalog.pdf";
 
 app.post("/webhook", async (req, res) => {
-    try {
-        console.log("🔵 FULL BODY:", JSON.stringify(req.body, null, 2));
+  try {
+    const intentName = req.body.queryResult.intent.displayName;
 
-        const intent = req.body.queryResult?.intent?.displayName;
+    console.log("Intent:", intentName);
 
-        const phone =
-            req.body.originalDetectIntentRequest?.payload?.data?.from;
+    // 📱 Phone extract
+    const phone =
+      req.body.originalDetectIntentRequest?.payload?.data?.from;
 
-        console.log("👉 Intent:", intent);
-        console.log("👉 Phone:", phone);
-
-        // ❗ If phone missing (Dialogflow test case)
-        if (!phone) {
-            console.log("⚠️ Phone missing in payload");
-
-            return res.send({
-                fulfillmentText: "Please try again."
-            });
-        }
-
-        // ❗ Check env variables
-        if (!process.env.AISENSY_API_KEY) {
-            console.error("❌ AISENSY_API_KEY missing");
-        }
-
-        if (!process.env.PDF_URL) {
-            console.error("❌ PDF_URL missing");
-        }
-
-        // ✅ Main logic
-        if (intent === "send_list") {
-            await axios.post("https://api.aisensy.com/v1/message", {
-                apiKey: process.env.AISENSY_API_KEY,
-                campaignName: "send_list_pdf",
-                destination: phone,
-                userName: "Customer",
-                templateParams: [],
-                media: {
-                    type: "document",
-                    url: process.env.PDF_URL,
-                    filename: "Product_List.pdf"
-                }
-            });
-
-            console.log("✅ PDF sent to:", phone);
-        }
-
-        // ✅ Dialogflow response
-        return res.send({
-            fulfillmentText: "Sending you the product list now."
-        });
-
-    } catch (error) {
-        console.error("❌ ERROR:", error.response?.data || error.message);
-
-        return res.send({
-            fulfillmentText: "Something went wrong."
-        });
+    if (!phone) {
+      console.log("Phone not found");
+      return res.json({
+        fulfillmentText: "Number detect nahi ho paaya."
+      });
     }
+
+    // 🎯 YOUR FINAL INTENT
+    if (intentName === "send_list_pdf") {
+
+      const apiResponse = await axios.post(
+        "https://backend.aisensy.com/campaign/t1/api/v2",
+        {
+          apiKey: AISENSY_API_KEY,
+          campaignName: "send_list_pdf", // ✅ same as your template
+          destination: phone,
+          userName: "Customer",
+          templateParams: [],
+          source: "dialogflow",
+          media: {
+            url: PDF_URL,
+            filename: "Pharma_Product_List.pdf"
+          }
+        }
+      );
+
+      console.log("Aisensy Response:", apiResponse.data);
+
+      return res.json({
+        fulfillmentText:
+          "✅ Product list aapko WhatsApp par bhej di gayi hai."
+      });
+    }
+
+    return res.json({
+      fulfillmentText: "Intent match nahi hua."
+    });
+
+  } catch (error) {
+    console.error(
+      "ERROR:",
+      error.response?.data || error.message
+    );
+
+    return res.json({
+      fulfillmentText:
+        "❌ Error aaya hai. Please thodi der baad try karein."
+    });
+  }
 });
 
-// ✅ Render compatible port
+// 🌐 Start server
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+  console.log("Server running on port", PORT);
 });
