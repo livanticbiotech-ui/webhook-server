@@ -8,23 +8,61 @@ app.use(express.json());
 const AISENSY_API_KEY = process.env.AISENSY_API_KEY;
 const PDF_URL = "https://yourdomain.com/catalog.pdf"; // change this
 
+// 🎯 Aisensy Payload Parser (robust)
+function extractPhone(body) {
+  try {
+    const payload = body?.originalDetectIntentRequest?.payload;
+
+    if (!payload) return null;
+
+    // Case 1 (most common - Aisensy)
+    if (payload?.data?.from) return payload.data.from;
+
+    // Case 2
+    if (payload?.from) return payload.from;
+
+    // Case 3 (WhatsApp meta style)
+    if (payload?.data?.contacts?.[0]?.wa_id)
+      return payload.data.contacts[0].wa_id;
+
+    // Case 4 (deep nested webhook)
+    if (payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from)
+      return payload.entry[0].changes[0].value.messages[0].from;
+
+    // Case 5
+    if (payload?.phone) return payload.phone;
+
+    return null;
+  } catch (err) {
+    console.error("❌ Phone parse error:", err.message);
+    return null;
+  }
+}
+
+// 🚀 WEBHOOK
 app.post("/webhook", async (req, res) => {
   try {
     const intentName = req.body.queryResult?.intent?.displayName;
 
-    const phone =
-      req.body.originalDetectIntentRequest?.payload?.data?.from;
+    const phone = extractPhone(req.body);
 
     console.log("👉 Intent:", intentName);
     console.log("👉 Phone:", phone);
+    console.log("📦 FULL BODY:", JSON.stringify(req.body, null, 2));
 
-    // ✅ ALWAYS respond immediately (CRITICAL)
+    // ✅ ALWAYS respond immediately (prevents bot freeze)
     res.json({
       fulfillmentText: "Processing your request..."
     });
 
-    // 🎯 HANDLE SEND LIST
-    if (intentName === "send_list" && phone) {
+    // 🎯 SEND LIST INTENT
+    if (intentName === "send_list") {
+
+      if (!phone) {
+        console.log("⚠️ Phone missing → skipping API call");
+        return;
+      }
+
       try {
         await axios.post(
           "https://backend.aisensy.com/campaign/t1/api/v2",
@@ -42,7 +80,8 @@ app.post("/webhook", async (req, res) => {
           }
         );
 
-        console.log("✅ PDF sent successfully");
+        console.log("✅ PDF sent to:", phone);
+
       } catch (err) {
         console.error(
           "❌ Aisensy API Error:",
@@ -51,15 +90,14 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // 🎯 HANDLE OTHER INTENTS (optional logging)
+    // 🎯 OTHER INTENTS (optional logging)
     if (intentName === "no_requirement") {
-      console.log("User not interested");
+      console.log("User selected: No Requirement");
     }
 
   } catch (error) {
     console.error("❌ Webhook Error:", error.message);
 
-    // fallback response (just in case)
     if (!res.headersSent) {
       res.json({
         fulfillmentText: "Something went wrong."
@@ -68,12 +106,12 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ✅ Health check (optional)
+// ✅ Health check
 app.get("/", (req, res) => {
-  res.send("Server is live");
+  res.send("Webhook server is live");
 });
 
-// 🚀 START SERVER
+// 🚀 Start server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log("🚀 Server running on port", PORT);
