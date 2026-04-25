@@ -5,14 +5,14 @@ const app = express();
 app.use(express.json());
 
 // ===============================
-// SAFE LOGGING
+// LOG HELPER
 // ===============================
 function log(...args) {
   console.log("[WEBHOOK]", ...args);
 }
 
 // ===============================
-// SESSION / PHONE EXTRACTOR
+// PHONE EXTRACTOR (AISENSY SAFE)
 // ===============================
 function getPhone(body) {
   try {
@@ -38,34 +38,39 @@ function getPhone(body) {
 }
 
 // ===============================
-// AISENSY API CALL (FINAL FIX)
+// AISENSY SEND FUNCTION
 // ===============================
 async function sendList(phone) {
   try {
     const response = await axios.post(
-      "https://api.aisensy.com/campaign/t1/api/v2", // ⚠️ confirm endpoint
+      "https://backend.aisensy.com/campaign/t1/api/v2",
       {
-        apiKey: "YOUR_API_KEY",
-        to: phone,
-        type: "text",
-        message: "📄 Here is your requested list"
+        apiKey: "YOUR_API_KEY_HERE",
+        campaignName: "send_list",   // must match dashboard campaign
+        destination: phone,          // 91XXXXXXXXXX
+        userName: "Bot",
+        source: "dialogflow",
+        templateParams: []
       },
       {
+        headers: {
+          "Content-Type": "application/json"
+        },
         timeout: 10000
       }
     );
 
-    log("📤 AISensy Success:", response.data);
+    log("📤 AISensy SUCCESS:", response.data);
     return true;
 
   } catch (err) {
-    log("❌ AISensy Failed:", err?.response?.data || err.message);
+    log("❌ AISensy FAILED:", err?.response?.data || err.message);
     return false;
   }
 }
 
 // ===============================
-// GUARANTEED RESPONSE
+// SAFE RESPONSE
 // ===============================
 function reply(res, text) {
   return res.json({
@@ -74,7 +79,7 @@ function reply(res, text) {
 }
 
 // ===============================
-// WEBHOOK
+// WEBHOOK MAIN
 // ===============================
 app.post("/webhook", async (req, res) => {
   try {
@@ -83,9 +88,7 @@ app.post("/webhook", async (req, res) => {
     const source = body?.originalDetectIntentRequest?.source;
     const intent = body?.queryResult?.intent?.displayName;
 
-    // ===============================
-    // IGNORE CONSOLE
-    // ===============================
+    // Ignore console test
     if (source === "DIALOGFLOW_CONSOLE") {
       log("Console ignored");
       return reply(res, "Console test only");
@@ -96,18 +99,13 @@ app.post("/webhook", async (req, res) => {
     log("Intent:", intent);
     log("Phone:", phone);
 
-    // ===============================
-    // SAFE FALLBACK (NO DEAD BOT)
-    // ===============================
+    // Safe fallback (never break bot)
     if (!phone) {
-      log("⚠️ No phone - safe exit");
-
+      log("⚠️ No phone found");
       return reply(res, "Message received");
     }
 
-    // ===============================
     // MAIN INTENT
-    // ===============================
     if (intent === "send_list") {
       log("📤 Sending list to:", phone);
 
@@ -120,9 +118,6 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // ===============================
-    // DEFAULT
-    // ===============================
     return reply(res, "OK");
 
   } catch (err) {
@@ -134,5 +129,5 @@ app.post("/webhook", async (req, res) => {
 // ===============================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log("🚀 FINAL WEBHOOK RUNNING ON PORT", PORT);
+  console.log("🚀 Server running on port", PORT);
 });
