@@ -28,7 +28,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // 🎯 YOUR FINAL INTENT
-    if (intentName === "send_list_pdf") {
+    if (intentName === "send_list") {
 
       const apiResponse = await axios.post(
         "https://backend.aisensy.com/campaign/t1/api/v2",
