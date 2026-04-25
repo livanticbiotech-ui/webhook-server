@@ -6,74 +6,53 @@ app.use(express.json());
 
 app.post("/webhook", async (req, res) => {
   try {
-    // 🔴 Intent name
+    // 🔴 Intent
     const intent = req.body?.queryResult?.intent?.displayName || "";
 
-    // 🔴 Safe phone extraction (important fix)
+    // 🔴 Safe phone extraction
     const phone =
-      req.body?.originalDetectIntentRequest?.payload?.data?.from ||
-      "";
+      req.body?.originalDetectIntentRequest?.payload?.data?.from || "";
 
-    // 🔴 Business number (for multi-number setup)
-    const businessNumber =
-      req.body?.originalDetectIntentRequest?.payload?.data?.to ||
-      "";
-
-    // 🔴 Debug logs (VERY IMPORTANT)
+    // 🔴 Debug logs
     console.log("Intent:", intent);
-    console.log("User Phone:", phone);
-    console.log("Business Number:", businessNumber);
+    console.log("Phone:", phone);
     console.log("FULL BODY:", JSON.stringify(req.body, null, 2));
 
-    // 🔴 Default values (single number setup)
-    let apiKey = process.env.AISENSY_API_KEY;
-    let pdfUrl = process.env.PDF_URL;
-
-    // 🟡 OPTIONAL: Multi-number logic (edit if needed)
-    /*
-    if (businessNumber === "91XXXXXXXXXX") {
-      apiKey = "API_KEY_PROJECT_A";
-      pdfUrl = "https://link1.pdf";
-    } else if (businessNumber === "91YYYYYYYYYY") {
-      apiKey = "API_KEY_PROJECT_B";
-      pdfUrl = "https://link2.pdf";
-    }
-    */
-
-    // 🔴 Main logic
+    // 🔴 Check intent
     if (intent === "send_list" && phone) {
+
       await axios.post("https://api.aisensy.com/v1/message", {
-        apiKey: apiKey,
-        campaignName: "send_list_pdf", // 👈 must match AiSensy template
+        apiKey: process.env.AISENSY_API_KEY,   // 👈 Render se aayega
+        campaignName: "send_list_pdf",         // 👈 AiSensy template
         destination: phone,
         userName: "Customer",
         templateParams: [],
         media: {
           type: "document",
-          url: pdfUrl,
-          filename: "Product_List.pdf",
-        },
+          url: process.env.PDF_URL,            // 👈 Render se aayega
+          filename: "Product_List.pdf"
+        }
       });
 
       console.log("✅ PDF Sent Successfully");
+
     } else {
       console.log("⚠️ Intent mismatch or phone missing");
     }
 
-    // 🔴 Dialogflow response
     res.send({
-      fulfillmentText: "Sending you the product list now.",
+      fulfillmentText: "Sending you the product list now."
     });
+
   } catch (error) {
     console.error("❌ ERROR:", error.response?.data || error.message);
 
     res.send({
-      fulfillmentText: "Something went wrong. Please try again later.",
+      fulfillmentText: "Something went wrong. Please try again."
     });
   }
 });
 
-// 🔴 Server start
 app.listen(process.env.PORT || 3000, () => {
   console.log("🚀 Server running...");
 });
