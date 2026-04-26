@@ -23,13 +23,13 @@ function getPhone(body) {
   }
 }
 
-async function sendListPDF(phone) {
+async function sendCampaign(phone, campaignName) {
   try {
     const response = await axios.post(
       "https://backend.aisensy.com/campaign/t1/api/v2",
       {
         apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjkzZGYzOTkyZjA5MTBmMTEwMzYxMyIsIm5hbWUiOiJsaXZhbnRpYyBiaW90ZWNoIDE3NjAiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkJBU0lDX01PTlRITFkiLCJpYXQiOjE3NzcxMjI0ODJ9.-kJgh0Jdv-I8EsFIuKN7QiRyNHLjpY6V6Z6irsvGHRg",
-        campaignName: "send_list_pdf",
+        campaignName: campaignName,
         destination: phone,
         source: "dialogflow",
         userName: "Bot",
@@ -40,10 +40,10 @@ async function sendListPDF(phone) {
         timeout: 8000
       }
     );
-    log("✅ CAMPAIGN SENT:", response.data);
+    log("✅ CAMPAIGN SENT:", campaignName, response.data);
     return true;
   } catch (err) {
-    log("❌ CAMPAIGN FAILED:", err?.response?.data || err.message);
+    log("❌ CAMPAIGN FAILED:", campaignName, err?.response?.data || err.message);
     return false;
   }
 }
@@ -53,6 +53,18 @@ function reply(res, text) {
     return res.json({ fulfillmentText: text || "OK" });
   } catch (e) {
     log("Reply failed:", e.message);
+  }
+}
+
+function emptyReply(res) {
+  try {
+    // Empty reply — Dialogflow ka apna intent response jayega
+    return res.json({
+      fulfillmentText: "",
+      fulfillmentMessages: []
+    });
+  } catch (e) {
+    log("Empty reply failed:", e.message);
   }
 }
 
@@ -78,13 +90,35 @@ app.post("/webhook", async (req, res) => {
       const phone = getPhone(body);
       log("Intent:", intent, "| Phone:", phone);
 
+      // ================================
+      // SEND LIST INTENT
+      // Campaign trigger hoga
+      // Dialogflow ka apna reply jayega
+      // Output context bhi kaam karega
+      // ================================
       if (intent === "send_list") {
         if (phone) {
-          log("Sending list to:", phone);
-          sendListPDF(phone).catch((e) => log("Send failed:", e.message));
+          log("📤 Sending list campaign to:", phone);
+          // Fire and forget — bot wait nahi karega
+          sendCampaign(phone, "send_list_pdf")
+            .catch((e) => log("send_list_pdf failed:", e.message));
         }
-        return reply(res, "Hamari product list aapko bhej di gayi hai!");
+        // ✅ Empty reply — intent ka apna response jayega
+        return emptyReply(res);
       }
+
+      // ================================
+      // FOLLOW UP INTENT (agar chahiye)
+      // AiSensy mein follow_up_campaign
+      // naam ki campaign banao
+      // ================================
+      // if (intent === "user_interested") {
+      //   if (phone) {
+      //     sendCampaign(phone, "follow_up_campaign")
+      //       .catch((e) => log("follow_up failed:", e.message));
+      //   }
+      //   return emptyReply(res);
+      // }
 
     } catch (innerErr) {
       log("Inner error:", innerErr.message);
