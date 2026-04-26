@@ -20,7 +20,7 @@ function getPhone(body) {
     }
     return null;
   } catch (e) {
-    return null; // Phone extraction failed, still safe
+    return null;
   }
 }
 
@@ -29,7 +29,7 @@ async function sendListPDF(phone) {
     const response = await axios.post(
       "https://backend.aisensy.com/campaign/t1/api/v2",
       {
-        apiKey: "YOUR_API_CAMPAIGN_KEY_HERE",  // ✅ Paste your API Campaign Key here
+        apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjkzZGYzOTkyZjA5MTBmMTEwMzYxMyIsIm5hbWUiOiJsaXZhbnRpYyBiaW90ZWNoIDE3NjAiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkJBU0lDX01PTlRITFkiLCJpYXQiOjE3NzcxMjI0ODJ9.-kJgh0Jdv-I8EsFIuKN7QiRyNHLjpY6V6Z6irsvGHRg",  // ✅ SIRF YAHAN KEY LAGAO
         campaignName: "send_list_pdf",
         destination: phone,
         source: "dialogflow",
@@ -38,27 +38,25 @@ async function sendListPDF(phone) {
       },
       {
         headers: { "Content-Type": "application/json" },
-        timeout: 8000  // 8 sec timeout, won't hang forever
+        timeout: 8000
       }
     );
     log("✅ CAMPAIGN SENT:", response.data);
     return true;
   } catch (err) {
     log("❌ CAMPAIGN FAILED:", err?.response?.data || err.message);
-    return false; // Failure logged but never crashes bot
+    return false;
   }
 }
 
 function reply(res, text) {
   try {
-    // Double safety: even reply function is protected
     return res.json({ fulfillmentText: text || "OK" });
   } catch (e) {
     log("⚠️ Reply failed:", e.message);
   }
 }
 
-// ✅ MASTER SAFETY NET - catches everything
 process.on("uncaughtException", (err) => {
   log("🔥 Uncaught Exception (server still running):", err.message);
 });
@@ -68,18 +66,15 @@ process.on("unhandledRejection", (reason) => {
 });
 
 app.post("/webhook", async (req, res) => {
-  // ✅ OUTER TRY-CATCH: Nothing escapes this
   try {
     const body = req.body || {};
     const source = body?.originalDetectIntentRequest?.source;
     const intent = body?.queryResult?.intent?.displayName;
 
-    // Ignore Dialogflow console tests
     if (source === "DIALOGFLOW_CONSOLE") {
       return reply(res, "OK");
     }
 
-    // ✅ INNER TRY-CATCH: Phone + campaign logic protected separately
     try {
       const phone = getPhone(body);
       log("Intent:", intent, "| Phone:", phone);
@@ -87,37 +82,27 @@ app.post("/webhook", async (req, res) => {
       if (intent === "send_list") {
         if (phone) {
           log("📤 Sending list to:", phone);
-          // ✅ Fire and forget — bot replies instantly, PDF sends in background
           sendListPDF(phone).catch((e) => log("Background send failed:", e.message));
-        } else {
-          log("⚠️ No phone found for send_list intent");
         }
-        // ✅ Always reply immediately — bot never waits, never stops
         return reply(res, "✅ Hamari product list aapko bhej di gayi hai!");
       }
 
     } catch (innerErr) {
       log("⚠️ Inner error caught:", innerErr.message);
-      // Still reply OK so bot doesn't stop
     }
 
     return reply(res, "OK");
 
   } catch (outerErr) {
     log("🔥 Outer error caught:", outerErr.message);
-    // Last resort reply — bot must not stop
     try {
       return res.json({ fulfillmentText: "OK" });
-    } catch (e) {
-      // Nothing more we can do
-    }
+    } catch (e) {}
   }
 });
 
-// Health check route (useful for Render)
 app.get("/", (req, res) => {
   res.send("✅ Livantic Biotech Webhook is Running!");
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("🚀 Livantic Biotech Webhook Running on port", PORT));
+const PORT = process.env.
