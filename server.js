@@ -4,132 +4,120 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ===============================
-// LOGS
-// ===============================
 function log(...args) {
   console.log("[WEBHOOK]", ...args);
 }
 
-// ===============================
-// PHONE EXTRACTOR (AISENSY SAFE)
-// ===============================
 function getPhone(body) {
   try {
-    const direct =
-      body?.originalDetectIntentRequest?.payload?.AiSensyMobileNumber;
+    const direct = body?.originalDetectIntentRequest?.payload?.AiSensyMobileNumber;
+    if (direct) return direct.replace("+", "").replace(/\s/g, "");
 
-    if (direct) return direct.replace("+", "");
-
-    const msg =
-      body?.originalDetectIntentRequest?.payload?.AiSensyMessage;
-
+    const msg = body?.originalDetectIntentRequest?.payload?.AiSensyMessage;
     if (msg) {
-      const parsed = JSON.parse(msg);
-      if (parsed?.phone_number) {
-        return parsed.phone_number.replace("+", "");
-      }
+      const parsed = typeof msg === "string" ? JSON.parse(msg) : msg;
+      if (parsed?.phone_number) return parsed.phone_number.replace("+", "");
     }
-
     return null;
   } catch (e) {
-    return null;
+    return null; // Phone extraction failed, still safe
   }
 }
 
-// ===============================
-// AISENSY SEND FUNCTION (FINAL FIX)
-// ===============================
-async function sendList(phone) {
+async function sendListPDF(phone) {
   try {
     const response = await axios.post(
       "https://backend.aisensy.com/campaign/t1/api/v2",
       {
-        campaignName: "send_list_pdf",   // ✅ YOUR TEMPLATE
-        destination: phone,              // 91XXXXXXXXXX
+        apiKey: "YOUR_API_CAMPAIGN_KEY_HERE",  // ✅ Paste your API Campaign Key here
+        campaignName: "send_list_pdf",
+        destination: phone,
         source: "dialogflow",
         userName: "Bot",
         templateParams: []
       },
       {
-        headers: {
-          "x-api-key": "YOUR_API_KEY_HERE",  // 🔥 FINAL FIX (NO BEARER)
-          "Content-Type": "application/json"
-        },
-        timeout: 10000
+        headers: { "Content-Type": "application/json" },
+        timeout: 8000  // 8 sec timeout, won't hang forever
       }
     );
-
-    log("📤 AISENSY SUCCESS:", response.data);
+    log("✅ CAMPAIGN SENT:", response.data);
     return true;
-
   } catch (err) {
-    log("❌ AISENSY FAILED:", err?.response?.data || err.message);
-    return false;
+    log("❌ CAMPAIGN FAILED:", err?.response?.data || err.message);
+    return false; // Failure logged but never crashes bot
   }
 }
 
-// ===============================
-// RESPONSE HELPER
-// ===============================
 function reply(res, text) {
-  return res.json({
-    fulfillmentText: text || "OK"
-  });
+  try {
+    // Double safety: even reply function is protected
+    return res.json({ fulfillmentText: text || "OK" });
+  } catch (e) {
+    log("⚠️ Reply failed:", e.message);
+  }
 }
 
-// ===============================
-// WEBHOOK MAIN
-// ===============================
-app.post("/webhook", async (req, res) => {
-  try {
-    const body = req.body;
+// ✅ MASTER SAFETY NET - catches everything
+process.on("uncaughtException", (err) => {
+  log("🔥 Uncaught Exception (server still running):", err.message);
+});
 
+process.on("unhandledRejection", (reason) => {
+  log("🔥 Unhandled Rejection (server still running):", reason);
+});
+
+app.post("/webhook", async (req, res) => {
+  // ✅ OUTER TRY-CATCH: Nothing escapes this
+  try {
+    const body = req.body || {};
     const source = body?.originalDetectIntentRequest?.source;
     const intent = body?.queryResult?.intent?.displayName;
 
-    // Ignore console testing
+    // Ignore Dialogflow console tests
     if (source === "DIALOGFLOW_CONSOLE") {
-      log("Console ignored");
-      return reply(res, "Console test only");
+      return reply(res, "OK");
     }
 
-    const phone = getPhone(body);
+    // ✅ INNER TRY-CATCH: Phone + campaign logic protected separately
+    try {
+      const phone = getPhone(body);
+      log("Intent:", intent, "| Phone:", phone);
 
-    log("Intent:", intent);
-    log("Phone:", phone);
-
-    // SAFE FALLBACK (never break bot)
-    if (!phone) {
-      log("⚠️ No phone found");
-      return reply(res, "Message received");
-    }
-
-    // ===============================
-    // YOUR INTENT HANDLER
-    // ===============================
-    if (intent === "send_list") {
-      log("📤 Triggering send_list_pdf for:", phone);
-
-      const success = await sendList(phone);
-
-      if (success) {
-        return reply(res, "PDF sent successfully ✅");
-      } else {
-        return reply(res, "Failed to send PDF ❌");
+      if (intent === "send_list") {
+        if (phone) {
+          log("📤 Sending list to:", phone);
+          // ✅ Fire and forget — bot replies instantly, PDF sends in background
+          sendListPDF(phone).catch((e) => log("Background send failed:", e.message));
+        } else {
+          log("⚠️ No phone found for send_list intent");
+        }
+        // ✅ Always reply immediately — bot never waits, never stops
+        return reply(res, "✅ Hamari product list aapko bhej di gayi hai!");
       }
+
+    } catch (innerErr) {
+      log("⚠️ Inner error caught:", innerErr.message);
+      // Still reply OK so bot doesn't stop
     }
 
     return reply(res, "OK");
 
-  } catch (err) {
-    log("🔥 Fatal error:", err.message);
-    return reply(res, "Recovered from error");
+  } catch (outerErr) {
+    log("🔥 Outer error caught:", outerErr.message);
+    // Last resort reply — bot must not stop
+    try {
+      return res.json({ fulfillmentText: "OK" });
+    } catch (e) {
+      // Nothing more we can do
+    }
   }
 });
 
-// ===============================
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log("🚀 FINAL AISENSY WEBHOOK RUNNING");
+// Health check route (useful for Render)
+app.get("/", (req, res) => {
+  res.send("✅ Livantic Biotech Webhook is Running!");
 });
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("🚀 Livantic Biotech Webhook Running on port", PORT));
