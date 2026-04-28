@@ -8,6 +8,18 @@ function log(...args) {
   console.log("[WEBHOOK]", ...args);
 }
 
+// ✅ API Keys — paste your keys here
+const API_KEYS = {
+  "919888776757": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjkzZGYzOTkyZjA5MTBmMTEwMzYxMyIsIm5hbWUiOiJsaXZhbnRpYyBiaW90ZWNoIDE3NjAiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkJBU0lDX01PTlRITFkiLCJpYXQiOjE3NzcxMjI0ODJ9.-kJgh0Jdv-I8EsFIuKN7QiRyNHLjpY6V6Z6irsvGHRg",  // Livantic Biotech 1760
+  "917707860105": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5MTFhYzlkMjAyNDkxMmRjZjNlYjM5NSIsIm5hbWUiOiJMSVZBTlRJQyBCSU9URUNIIFNBTEVTIDEiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkZSRUVfRk9SRVZFUiIsImlhdCI6MTc2Mjc2NTk4MX0.6efW4i9U40M4OL9C7Fs7heNfgj0DnjsIsXCoE5kLsxY"   // Livantic Biotech Sales 1
+};
+
+// ✅ Campaign names for each number
+const CAMPAIGNS = {
+  "919888776757": "send_list_pdf",   // 1st number campaign
+  "917707860105": "send_list_pdf2"   // 2nd number campaign
+};
+
 function getPhone(body) {
   try {
     const direct = body?.originalDetectIntentRequest?.payload?.AiSensyMobileNumber;
@@ -23,120 +35,11 @@ function getPhone(body) {
   }
 }
 
-async function sendCampaign(phone, campaignName) {
+function getAiSensyNumber(body) {
   try {
-    const response = await axios.post(
-      "https://backend.aisensy.com/campaign/t1/api/v2",
-      {
-        apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjkzZGYzOTkyZjA5MTBmMTEwMzYxMyIsIm5hbWUiOiJsaXZhbnRpYyBiaW90ZWNoIDE3NjAiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkJBU0lDX01PTlRITFkiLCJpYXQiOjE3NzcxMjI0ODJ9.-kJgh0Jdv-I8EsFIuKN7QiRyNHLjpY6V6Z6irsvGHRg",
-        campaignName: campaignName,
-        destination: phone,
-        source: "dialogflow",
-        userName: "Bot",
-        templateParams: []
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 8000
-      }
-    );
-    log("✅ CAMPAIGN SENT:", campaignName, response.data);
-    return true;
-  } catch (err) {
-    log("❌ CAMPAIGN FAILED:", campaignName, err?.response?.data || err.message);
-    return false;
-  }
-}
+    // This tells us WHICH business number the customer messaged on
+    const num = body?.originalDetectIntentRequest?.payload?.AiSensyBusinessNumber;
+    if (num) return num.replace("+", "").replace(/\s/g, "");
 
-function reply(res, text) {
-  try {
-    return res.json({ fulfillmentText: text || "OK" });
-  } catch (e) {
-    log("Reply failed:", e.message);
-  }
-}
-
-function emptyReply(res) {
-  try {
-    // Empty reply — Dialogflow ka apna intent response jayega
-    return res.json({
-      fulfillmentText: "",
-      fulfillmentMessages: []
-    });
-  } catch (e) {
-    log("Empty reply failed:", e.message);
-  }
-}
-
-process.on("uncaughtException", (err) => {
-  log("Server error (still running):", err.message);
-});
-
-process.on("unhandledRejection", (reason) => {
-  log("Unhandled rejection (still running):", reason);
-});
-
-app.post("/webhook", async (req, res) => {
-  try {
-    const body = req.body || {};
-    const source = body?.originalDetectIntentRequest?.source;
-    const intent = body?.queryResult?.intent?.displayName;
-
-    if (source === "DIALOGFLOW_CONSOLE") {
-      return reply(res, "OK");
-    }
-
-    try {
-      const phone = getPhone(body);
-      log("Intent:", intent, "| Phone:", phone);
-
-      // ================================
-      // SEND LIST INTENT
-      // Campaign trigger hoga
-      // Dialogflow ka apna reply jayega
-      // Output context bhi kaam karega
-      // ================================
-      if (intent === "send_list") {
-        if (phone) {
-          log("📤 Sending list campaign to:", phone);
-          // Fire and forget — bot wait nahi karega
-          sendCampaign(phone, "send_list_pdf")
-            .catch((e) => log("send_list_pdf failed:", e.message));
-        }
-        // ✅ Empty reply — intent ka apna response jayega
-        return emptyReply(res);
-      }
-
-      // ================================
-      // FOLLOW UP INTENT (agar chahiye)
-      // AiSensy mein follow_up_campaign
-      // naam ki campaign banao
-      // ================================
-      // if (intent === "user_interested") {
-      //   if (phone) {
-      //     sendCampaign(phone, "follow_up_campaign")
-      //       .catch((e) => log("follow_up failed:", e.message));
-      //   }
-      //   return emptyReply(res);
-      // }
-
-    } catch (innerErr) {
-      log("Inner error:", innerErr.message);
-    }
-
-    return reply(res, "OK");
-
-  } catch (outerErr) {
-    log("Outer error:", outerErr.message);
-    try {
-      return res.json({ fulfillmentText: "OK" });
-    } catch (e) {}
-  }
-});
-
-app.get("/", (req, res) => {
-  res.send("Livantic Biotech Webhook is Running!");
-});
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Webhook running on port", PORT));
+    // Fallback — some AiSensy versions send it differently
+    const num2 = body?.ori
