@@ -8,11 +8,19 @@ function log(...args) {
   console.log("[WEBHOOK]", ...args);
 }
 
+// ✅ Project IDs mapped to business numbers
+const PROJECT_IDS = {
+  "68b93df3992f0910f1103613": "919888776757",  // 1st account - Livantic Biotech 1760
+  "6911ac9d2024912dcf3eb395": "917707860105"   // 2nd account - Livantic Biotech Sales 1
+};
+
+// ✅ API Keys for each number
 const API_KEYS = {
   "919888776757": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjkzZGYzOTkyZjA5MTBmMTEwMzYxMyIsIm5hbWUiOiJsaXZhbnRpYyBiaW90ZWNoIDE3NjAiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkJBU0lDX01PTlRITFkiLCJpYXQiOjE3NzcxMjI0ODJ9.-kJgh0Jdv-I8EsFIuKN7QiRyNHLjpY6V6Z6irsvGHRg",
   "917707860105": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5MTFhYzlkMjAyNDkxMmRjZjNlYjM5NSIsIm5hbWUiOiJMSVZBTlRJQyBCSU9URUNIIFNBTEVTIDEiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjhiOTNkZjM5OTJmMDkxMGYxMTAzNjBlIiwiYWN0aXZlUGxhbiI6IkZSRUVfRk9SRVZFUiIsImlhdCI6MTc2Mjc2NTk4MX0.6efW4i9U40M4OL9C7Fs7heNfgj0DnjsIsXCoE5kLsxY"
 };
 
+// ✅ Campaign names for each number
 const CAMPAIGNS = {
   "919888776757": "send_list_pdf",
   "917707860105": "send_list_pdf2"
@@ -35,10 +43,15 @@ function getPhone(body) {
 
 function getAiSensyNumber(body) {
   try {
-    const num = body?.originalDetectIntentRequest?.payload?.AiSensyBusinessNumber;
-    if (num) return num.replace("+", "").replace(/\s/g, "");
-    const num2 = body?.originalDetectIntentRequest?.payload?.businessNumber;
-    if (num2) return num2.replace("+", "").replace(/\s/g, "");
+    const msg = body?.originalDetectIntentRequest?.payload?.AiSensyMessage;
+    if (msg) {
+      const parsed = typeof msg === "string" ? JSON.parse(msg) : msg;
+      const projectId = parsed?.project_id;
+      log("🔍 Project ID detected:", projectId);
+      if (projectId && PROJECT_IDS[projectId]) {
+        return PROJECT_IDS[projectId];
+      }
+    }
     return null;
   } catch (e) {
     return null;
@@ -112,7 +125,6 @@ app.post("/webhook", async (req, res) => {
       const aiSensyNumber = getAiSensyNumber(body);
 
       log("Intent:", intent, "| Customer Phone:", phone, "| Business Number:", aiSensyNumber);
-      log("Full payload:", JSON.stringify(body?.originalDetectIntentRequest?.payload, null, 2));
 
       if (intent === "send_list") {
         if (phone) {
@@ -125,7 +137,7 @@ app.post("/webhook", async (req, res) => {
           } else {
             apiKey = API_KEYS["919888776757"];
             campaignName = CAMPAIGNS["919888776757"];
-            log("⚠️ Business number not detected, falling back to 1st number");
+            log("⚠️ Project ID not matched, falling back to 1st number");
           }
 
           sendCampaign(phone, campaignName, apiKey)
